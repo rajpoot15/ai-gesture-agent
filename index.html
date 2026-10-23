@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Smart Voice & Gesture AI Agent</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- MediaPipe Tasks Vision CDN -->
+  <script type="module">
+    import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+    window.HandLandmarker = HandLandmarker;
+    window.FilesetResolver = FilesetResolver;
+  </script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@300;400;600;700&display=swap');
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0d1117;
+      color: #e6edf3;
+      touch-action: manipulation;
+    }
+    
+    .font-mono-code {
+      font-family: 'Fira Code', monospace;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #161b22;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #30363d;
+      border-radius: 4px;
+    }
+
+    /* Mirror effect for front camera */
+    .mirror {
+      transform: scaleX(-1);
+    }
+    
+    .pulse-ring {
+      box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5);
+      animation: pulse-blue 2s infinite;
+    }
+    
+    @keyframes pulse-blue {
+      0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6); }
+      70% { box-shadow: 0 0 0 12px rgba(59, 130, 246, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+    }
+  </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+  <!-- Top Header -->
+  <header class="bg-gray-900/80 backdrop-blur border-b border-gray-800 sticky top-0 z-50 px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center space-x-2">
+      <div class="w-8 h-8 rounded-lg bg-indigo-600/30 border border-indigo-500/50 flex items-center justify-center text-indigo-400">
+        <i class="fa-solid fa-robot text-lg"></i>
+      </div>
+      <div>
+        <h1 class="text-base font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent leading-none">
+          OmniAgent AI
+        </h1>
+        <p class="text-[10px] text-gray-400 font-mono-code">Voice & Gesture Control Hub</p>
+      </div>
+    </div>
+
+    <!-- Active Indicators -->
+    <div class="flex items-center space-x-2">
+      <span id="cameraStatusBadge" class="text-[10px] font-mono-code px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 flex items-center gap-1">
+        <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> CAM OFF
+      </span>
+      <span id="voiceStatusBadge" class="text-[10px] font-mono-code px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 flex items-center gap-1">
+        <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> MIC OFF
+      </span>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 p-3 max-w-2xl mx-auto w-full flex flex-col gap-3">
+
+    <!-- Controls Panel -->
+    <div class="grid grid-cols-2 gap-2">
+      <button id="toggleCamBtn" class="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 px-3 rounded-xl font-semibold text-xs transition border border-indigo-400/30 shadow-lg shadow-indigo-900/20 active:scale-95">
+        <i class="fa-solid fa-video"></i> Start Camera Vision
+      </button>
+
+      <button id="toggleMicBtn" class="flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-500 text-white py-2.5 px-3 rounded-xl font-semibold text-xs transition border border-purple-400/30 shadow-lg shadow-purple-900/20 active:scale-95">
+        <i class="fa-solid fa-microphone"></i> Start Voice Listening
+      </button>
+    </div>
+
+    <!-- Live Vision & Speech Overlay Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      
+      <!-- Camera Feed Container -->
+      <div class="relative bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden aspect-video flex items-center justify-center shadow-inner">
+        <video id="webcam" autoplay playsinline class="w-full h-full object-cover mirror hidden"></video>
+        <canvas id="outputCanvas" class="absolute inset-0 w-full h-full mirror hidden"></canvas>
+        
+        <!-- Camera Placeholder -->
+        <div id="camPlaceholder" class="flex flex-col items-center gap-2 text-gray-500 p-4 text-center">
+          <i class="fa-solid fa-camera text-3xl"></i>
+          <p class="text-xs">Camera feed is offline.<br>Tap 'Start Camera Vision' above.</p>
+        </div>
+
+        <!-- Real-time Gesture Floating HUD -->
+        <div class="absolute bottom-2 left-2 right-2 bg-gray-950/80 backdrop-blur border border-gray-800/80 rounded-xl px-3 py-1.5 flex items-center justify-between text-xs">
+          <span class="text-gray-400 font-mono-code text-[11px]">Gesture Detected:</span>
+          <span id="currentGestureText" class="font-bold text-indigo-400 font-mono-code">NONE</span>
+        </div>
+      </div>
+
+      <!-- Speech Recognition Live Feedback Card -->
+      <div class="bg-gray-900 rounded-2xl border border-gray-800 p-3.5 flex flex-col justify-between gap-2 shadow-inner">
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-semibold text-purple-400 flex items-center gap-1.5">
+              <i class="fa-solid fa-wave-square text-xs"></i> Live Speech Transcript
+            </span>
+            <span id="micListeningDot" class="w-2 h-2 rounded-full bg-gray-600"></span>
+          </div>
+          <p id="speechTranscript" class="text-xs text-gray-300 italic bg-gray-950/50 border border-gray-800/80 rounded-xl p-2.5 min-h-[60px] flex items-center">
+            "Say 'Scroll Down', 'Scroll Up', 'Like', or 'Help'..."
+          </p>
+        </div>
+
+        <div class="flex items-center justify-between text-[11px] text-gray-400 pt-1 border-t border-gray-800/60">
+          <span>Supported: English / Hindi</span>
+          <button id="testSpeakBtn" class="text-indigo-400 hover:underline flex items-center gap-1">
+            <i class="fa-solid fa-volume-high"></i> Test Voice TTS
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Command Cheat Sheet Accordion/Quick Bar -->
+    <div class="bg-gray-900/60 rounded-xl border border-gray-800/80 p-3">
+      <h2 class="text-xs font-bold text-gray-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+        <i class="fa-solid fa-bolt text-amber-400"></i> Supported Commands & Gestures
+      </h2>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+        <div class="bg-gray-950/60 p-2 rounded-lg border border-gray-800/60">
+          <div class="font-semibold text-indigo-300"><i class="fa-solid fa-hand-pointer"></i> Index Up / "Scroll Down"</div>
+          <div class="text-gray-400 text-[10px]">Scrolls page down</div>
+        </div>
+        <div class="bg-gray-950/60 p-2 rounded-lg border border-gray-800/60">
+          <div class="font-semibold text-indigo-300"><i class="fa-solid fa-hand"></i> Open Palm / "Scroll Up"</div>
+          <div class="text-gray-400 text-[10px]">Scrolls page up</div>
+        </div>
+        <div class="bg-gray-950/60 p-2 rounded-lg border border-gray-800/60">
+          <div class="font-semibold text-pink-300"><i class="fa-solid fa-thumbs-up"></i> Thumbs Up / "Like"</div>
+          <div class="text-gray-400 text-[10px]">Triggers Like action</div>
+        </div>
+        <div class="bg-gray-950/60 p-2 rounded-lg border border-gray-800/60">
+          <div class="font-semibold text-purple-300"><i class="fa-solid fa-[#]"></i> "Open YouTube" / "Next"</div>
+          <div class="text-gray-400 text-[10px]">Custom action trigger</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scrollable Feed Simulation Area (For Testing Gestures & Voice) -->
+    <div class="bg-gray-900 rounded-2xl border border-gray-800 p-3 flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <h2 class="text-xs font-bold text-gray-200 flex items-center gap-1.5">
+          <i class="fa-solid fa-newspaper text-indigo-400"></i> Interactive Test Feed
+        </h2>
+        <span class="text-[10px] text-gray-500 font-mono-code">Test gesture/voice scrolling here</span>
+      </div>
+
+      <!-- Feed Container (Scrollable Target) -->
+      <div id="scrollTargetArea" class="h-56 overflow-y-auto space-y-3 pr-1 bg-gray-950/50 p-2.5 rounded-xl border border-gray-800/60">
+        
+        <!-- Post 1 -->
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-indigo-400">@tech_innovator</span>
+            <span class="text-[10px] text-gray-500">2 mins ago</span>
+          </div>
+          <p class="text-xs text-gray-300">
+            Building hands-free AI web controllers with MediaPipe and Web Speech API on mobile! Try scrolling this feed using ☝️ Index Up or voice commands.
+          </p>
+          <div class="flex items-center justify-between pt-1 border-t border-gray-800 text-xs">
+            <button class="feed-like-btn text-gray-400 hover:text-pink-500 flex items-center gap-1 font-mono-code text-[11px] transition">
+              <i class="fa-regular fa-heart"></i> <span class="like-count">124</span> Likes
+            </button>
+            <span class="text-[10px] text-gray-500">Card #1</span>
+          </div>
+        </div>
+
+        <!-- Post 2 -->
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-purple-400">@mobile_developer</span>
+            <span class="text-[10px] text-gray-500">15 mins ago</span>
+          </div>
+          <p class="text-xs text-gray-300">
+            No laptop required! PWA architectures combined with mobile-first termux/browser workflows allow instant prototyping right on Android.
+          </p>
+          <div class="flex items-center justify-between pt-1 border-t border-gray-800 text-xs">
+            <button class="feed-like-btn text-gray-400 hover:text-pink-500 flex items-center gap-1 font-mono-code text-[11px] transition">
+              <i class="fa-regular fa-heart"></i> <span class="like-count">89</span> Likes
+            </button>
+            <span class="text-[10px] text-gray-500">Card #2</span>
+          </div>
+        </div>
+
+        <!-- Post 3 -->
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-emerald-400">@ai_researcher</span>
+            <span class="text-[10px] text-gray-500">1 hour ago</span>
+          </div>
+          <p class="text-xs text-gray-300">
+            Multimodal human-computer interaction is the future of mobile web applications. Hands-free accessibility makes apps universally useful.
+          </p>
+          <div class="flex items-center justify-between pt-1 border-t border-gray-800 text-xs">
+            <button class="feed-like-btn text-gray-400 hover:text-pink-500 flex items-center gap-1 font-mono-code text-[11px] transition">
+              <i class="fa-regular fa-heart"></i> <span class="like-count">240</span> Likes
+            </button>
+            <span class="text-[10px] text-gray-500">Card #3</span>
+          </div>
+        </div>
+
+        <!-- Post 4 -->
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-amber-400">@system_architect</span>
+            <span class="text-[10px] text-gray-500">3 hours ago</span>
+          </div>
+          <p class="text-xs text-gray-300">
+            Pro-tip: Combine Webhooks with MacroDroid on Android to execute native OS actions straight from browser gesture events!
+          </p>
+          <div class="flex items-center justify-between pt-1 border-t border-gray-800 text-xs">
+            <button class="feed-like-btn text-gray-400 hover:text-pink-500 flex items-center gap-1 font-mono-code text-[11px] transition">
+              <i class="fa-regular fa-heart"></i> <span class="like-count">312</span> Likes
+            </button>
+            <span class="text-[10px] text-gray-500">Card #4</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Real-time Activity Terminal Log -->
+    <div class="bg-gray-950 rounded-2xl border border-gray-800/80 p-3 font-mono-code text-[11px]">
+      <div class="flex items-center justify-between pb-2 mb-2 border-b border-gray-800 text-gray-400">
+        <span class="flex items-center gap-1.5 font-bold text-gray-300">
+          <i class="fa-solid fa-terminal text-emerald-400"></i> Event Execution Log
+        </span>
+        <button id="clearLogBtn" class="text-[10px] hover:text-white text-gray-500">Clear</button>
+      </div>
+      <div id="terminalLog" class="h-28 overflow-y-auto space-y-1 text-gray-400 pr-1">
+        <div class="text-emerald-400/80">[SYSTEM INITIALIZED] Ready to launch Vision & Speech agents...</div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- JavaScript Application Logic -->
+  <script type="module">
+    // Wait for CDN modules to load
+    let handLandmarker;
+    let webcamRunning = false;
+    let isListening = false;
+    let recognition;
+    
+    // Control DOM Elements
+    const toggleCamBtn = document.getElementById('toggleCamBtn');
+    const toggleMicBtn = document.getElementById('toggleMicBtn');
+    const video = document.getElementById('webcam');
+    const canvasElement = document.getElementById('outputCanvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const camPlaceholder = document.getElementById('camPlaceholder');
+    const gestureText = document.getElementById('currentGestureText');
+    const speechTranscript = document.getElementById('speechTranscript');
+    const terminalLog = document.getElementById('terminalLog');
+    const scrollArea = document.getElementById('scrollTargetArea');
+    const cameraStatusBadge = document.getElementById('cameraStatusBadge');
+    const voiceStatusBadge = document.getElementById('voiceStatusBadge');
+    const micListeningDot = document.getElementById('micListeningDot');
+
+    // Logging helper
+    function logEvent(msg, type = 'info') {
+      const time = new Date().toLocaleTimeString().split(' ')[0];
+      const logRow = document.createElement('div');
+      let colorClass = 'text-gray-300';
+      if (type === 'gesture') colorClass = 'text-indigo-400 font-semibold';
+      if (type === 'voice') colorClass = 'text-purple-400 font-semibold';
+      if (type === 'action') colorClass = 'text-emerald-400 font-semibold';
+      if (type === 'error') colorClass = 'text-red-400';
+
+      logRow.className = colorClass;
+      logRow.innerHTML = `<span class="text-gray-600">[${time}]</span> ${msg}`;
+      terminalLog.appendChild(logRow);
+      terminalLog.scrollTop = terminalLog.scrollHeight;
+    }
+
+    document.getElementById('clearLogBtn').addEventListener('click', () => {
+      terminalLog.innerHTML = `<div class="text-gray-500">[LOGS CLEARED]</div>`;
+    });
+
+    // --- Speech Synthesis (TTS) Helper ---
+    function speakText(text) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel(); // Stop any previous speech
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+
+    document.getElementById('testSpeakBtn').addEventListener('click', () => {
+      speakText("Voice synthesizer is working perfectly!");
+      logEvent("Speech Synthesis test executed.", "voice");
+    });
+
+    // --- MediaPipe Hand Tracking Setup ---
+    async function createHandLandmarker() {
+      try {
+        logEvent("Loading MediaPipe Vision Models from CDN...");
+        const vision = await window.FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
+        );
+        handLandmarker = await window.HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+            delegate: "GPU"
+          },
+          runningMode: "VIDEO",
+          numHands: 1
+        });
+        logEvent("MediaPipe Hand Landmarker model ready!", "action");
+      } catch (err) {
+        logEvent("Failed to load MediaPipe model: " + err.message, "error");
+      }
+    }
+    createHandLandmarker();
+
+    // Toggle Camera Vision
+    toggleCamBtn.addEventListener('click', async () => {
+      if (!handLandmarker) {
+        alert("MediaPipe vision model is still loading. Please wait a few seconds.");
+        return;
+      }
+
+      if (webcamRunning) {
+        // Stop Camera
+        webcamRunning = false;
+        const stream = video.srcObject;
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+        }
+        video.srcObject = null;
+        video.classList.add('hidden');
+        canvasElement.classList.add('hidden');
+        camPlaceholder.classList.remove('hidden');
+        toggleCamBtn.innerHTML = `<i class="fa-solid fa-video"></i> Start Camera Vision`;
+        toggleCamBtn.className = toggleCamBtn.className.replace('bg-red-600', 'bg-indigo-600');
+        cameraStatusBadge.className = "text-[10px] font-mono-code px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 flex items-center gap-1";
+        cameraStatusBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> CAM OFF`;
+        logEvent("Camera stream stopped.");
+      } else {
+        // Start Camera
+        try {
+          const constraints = { video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } };
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          video.srcObject = stream;
+          video.classList.remove('hidden');
+          canvasElement.classList.remove('hidden');
+          camPlaceholder.classList.add('hidden');
+          
+          webcamRunning = true;
+          toggleCamBtn.innerHTML = `<i class="fa-solid fa-video-slash"></i> Stop Camera`;
+          toggleCamBtn.className = toggleCamBtn.className.replace('bg-indigo-600', 'bg-red-600');
+          cameraStatusBadge.className = "text-[10px] font-mono-code px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1";
+          cameraStatusBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> CAM LIVE`;
+          
+          logEvent("Camera stream started successfully.", "action");
+          speakText("Camera vision activated");
+          
+          video.addEventListener("loadeddata", predictWebcam);
+        } catch (err) {
+          logEvent("Camera access error: " + err.message, "error");
+          alert("Could not access camera. Please grant permissions.");
+        }
+      }
+    });
+
+    let lastVideoTime = -1;
+    let lastGestureTime = 0;
+
+    async function predictWebcam() {
+      if (!webcamRunning) return;
+
+      canvasElement.width = video.videoWidth;
+      canvasElement.height = video.videoHeight;
+
+      let startTimeMs = performance.now();
+      if (lastVideoTime !== video.currentTime) {
+        lastVideoTime = video.currentTime;
+        const results = handLandmarker.detectForVideo(video, startTimeMs);
+
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+  
